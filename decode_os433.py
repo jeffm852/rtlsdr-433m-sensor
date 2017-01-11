@@ -9,9 +9,12 @@ Licensed under the terms of the GNU GPLv3+
 
 from gnuradio import gr
 import gr_queue
-from gnuradio import blks2
+from grc_gnuradio import blks2
 from gnuradio import audio
-from gnuradio.gr import firdes
+from gnuradio.filter import firdes
+from gnuradio.filter import filter_swig
+from gnuradio.filter import rational_resampler 
+from gnuradio.analog import am_demod
 import osmosdr
 
 # Sensors transmit on 433.9MHz
@@ -39,31 +42,32 @@ class rtlsdr_am_stream(gr.top_block):
 		output_rate = audio_rate / float(decimate_am)
 		self.rate = output_rate
 
-		self.osmosdr_source = osmosdr.source_c("")
+		self.osmosdr_source = osmosdr.source("")
 		self.osmosdr_source.set_center_freq(freq)
 		self.osmosdr_source.set_sample_rate(device_rate)
 
 		taps = firdes.low_pass(1, device_rate, 40000, 5000, firdes.WIN_HAMMING, 6.76)
-		self.freq_filter = gr.freq_xlating_fir_filter_ccc(25, taps, -freq_offs, device_rate)
+		self.freq_filter = filter_swig.freq_xlating_fir_filter_ccc(25, taps, -freq_offs, device_rate)
 
-		self.am_demod = blks2.am_demod_cf(
+		#self.am_demod_self = blks2.am_demod_cf(
+		self.am_demod_self = am_demod.am_demod_cf(
 			channel_rate=audio_rate,
 			audio_decim=1,
 			audio_pass=5000,
 			audio_stop=5500,
 		)
-		self.resampler = blks2.rational_resampler_fff(
+		self.resampler = rational_resampler.rational_resampler_fff(
 			interpolation=1,
 			decimation=decimate_am,
 		)
 		self.sink = gr_queue.queue_sink_f()
 		
-		self.connect(self.osmosdr_source, self.freq_filter, self.am_demod)
-		self.connect(self.am_demod, self.resampler, self.sink)
+		self.connect(self.osmosdr_source, self.freq_filter, self.am_demod_self)
+		self.connect(self.am_demod_self, self.resampler, self.sink)
 		
 		if play_audio:
 			self.audio_sink = audio.sink(audio_rate, "", True)
-			self.connect(self.am_demod, self.audio_sink)
+			self.connect(self.am_demod_self, self.audio_sink)
 			
 	def __iter__(self):
 		return self.sink.__iter__()
